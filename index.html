@@ -1752,7 +1752,6 @@
       COMBOS: 'fu_studio_combos_v1',
       BG_CONFIG: 'fu_studio_bg_config',
       BRAND_CONFIG: 'fu_studio_brand_config_v1',
-      GAS_URL: 'fu_studio_gas_url',
       CATALOG_VER: 'fu_catalog_version',
       ZALO_SINGLE: 'fu_zalo_template_single',
       ZALO_BATCH: 'fu_zalo_template_batch',
@@ -1767,7 +1766,7 @@
           'fu_studio_xuongin_v1', 'fu_studio_xuongin_v2', 'fu_studio_xuongin_v3', 'fu_studio_xuongin_v4',
           'fu_studio_catalog_v1', 'fu_studio_catalog_v2', 'fu_temp_', 'fu_tmp_'
         ];
-        const keysToRemove = [];
+        const keysToRemove = ['fu_studio_gas_url'];
         for (let i = 0; i < localStorage.length; i++) {
           const k = localStorage.key(i);
           if (k && legacyPrefixes.some(p => k.startsWith(p))) {
@@ -1841,8 +1840,8 @@
     let brandConfig = safeGetJSON(STORAGE_KEYS.BRAND_CONFIG, null) || { ...DEFAULT_BRAND_CONFIG };
     let brandLogoDraftUrl = '';
 
-    const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbw7CjioeUF_h1Ow6pPEYe6rtuJQ0b2gKa689lY9WcPi2w_p-nJrsXugX0B2vJxcMC1s/exec';
-    let gasUrl = localStorage.getItem(STORAGE_KEYS.GAS_URL) || DEFAULT_GAS_URL;
+    // Đã xóa liên kết Google Sheet cũ, chuyển 100% sang Supabase Database
+    try { localStorage.removeItem('fu_studio_gas_url'); } catch(e) {}
     let priceCatalog = safeGetJSON(STORAGE_KEYS.CATALOG, null);
     if (!Array.isArray(priceCatalog) || priceCatalog.length === 0) {
       priceCatalog = JSON.parse(JSON.stringify(DEFAULT_CATALOG));
@@ -1965,7 +1964,7 @@
         }
       }
 
-      // 5. Chuỗi ngày từ Google Sheets bị cắt 'GM' hoặc chứa 'GMT...' (ví dụ: 'Mon Oct 26 2026 00:00:00 GM')
+      // 5. Chuỗi ngày định dạng Date string chứa 'GMT...' (ví dụ: 'Mon Oct 26 2026 00:00:00 GM')
       const cleaned = str.replace(/\s*GM.*$/i, '').trim();
       const parsed = new Date(cleaned);
       if (!isNaN(parsed.getTime())) {
@@ -2276,16 +2275,8 @@
       document.title = `${nameStr} — ${subtitleStr}`;
     }
 
-    function saveBrandConfigToStorage(syncCloud = true) {
+    function saveBrandConfigToStorage() {
       safeSetStorage(STORAGE_KEYS.BRAND_CONFIG, brandConfig);
-      if (syncCloud && gasUrl && navigator.onLine) {
-        sendCloudPost({
-          action: 'saveSettings',
-          settings: {
-            fu_studio_brand_config_v1: JSON.stringify(brandConfig)
-          }
-        });
-      }
     }
 
     function openBrandModal() {
@@ -2670,12 +2661,6 @@
       safeSetStorage(STORAGE_KEYS.CATALOG, priceCatalog);
       renderPresetCombosGrid();
       renderQuickCatalogGrid();
-      if (gasUrl && navigator.onLine) {
-        sendCloudPost({
-          action: 'saveSettings',
-          settings: { fu_studio_catalog_v3: JSON.stringify(priceCatalog) }
-        });
-      }
       if (showNotification) {
         showToast('Đã lưu bảng giá xưởng thành công! ✅', 'success');
       }
@@ -2900,10 +2885,6 @@
         showToast('Lỗi đẩy dữ liệu lên Supabase: ' + (err.message || 'Lỗi kết nối'), 'error');
       }
     }
-
-    const pushAllOrdersToSheet = pushAllOrdersToSupabase;
-    async function sendCloudPost() { return null; }
-
     // ================= POS CATALOG & CART =================
     function filterCatalog(cat) {
       currentCategoryFilter = cat;
@@ -3166,10 +3147,6 @@
       }
 
       safeSetStorage(STORAGE_KEYS.COMBOS, presetCombos);
-      if (gasUrl) {
-        sendCloudPost({ action: 'saveSettings', settings: { fu_studio_combos_v1: JSON.stringify(presetCombos) } });
-      }
-
       renderPresetCombosGrid();
       cancelEditCombo();
       renderComboList();
@@ -3214,9 +3191,6 @@
       if (!confirmed) return;
       presetCombos = presetCombos.filter(c => c.id !== comboId);
       safeSetStorage(STORAGE_KEYS.COMBOS, presetCombos);
-      if (gasUrl) {
-        sendCloudPost({ action: 'saveSettings', settings: { fu_studio_combos_v1: JSON.stringify(presetCombos) } });
-      }
       cancelEditCombo();
       renderComboList();
       renderPresetCombosGrid();
@@ -3235,9 +3209,6 @@
       if (!confirmed) return;
       presetCombos = JSON.parse(JSON.stringify(DEFAULT_COMBOS));
       safeSetStorage(STORAGE_KEYS.COMBOS, presetCombos);
-      if (gasUrl) {
-        sendCloudPost({ action: 'saveSettings', settings: { fu_studio_combos_v1: JSON.stringify(presetCombos) } });
-      }
       renderComboList();
       renderPresetCombosGrid();
       showToast('Đã khôi phục 5 combo mặc định!', 'success');
@@ -3746,12 +3717,6 @@
 
     function setAdminPinHash(newHash) {
       localStorage.setItem('fu_studio_admin_pin_hash', newHash);
-      if (gasUrl && navigator.onLine) {
-        sendCloudPost({
-          action: 'saveSettings',
-          settings: { fu_studio_admin_pin_hash: newHash }
-        });
-      }
     }
 
     function togglePinVisibility(inputId, btnEl) {
@@ -4600,17 +4565,6 @@ Lưu ý: Anh em thợ kiểm tra kỹ danh sách và xác nhận giúp FU Studio
       safeSetStorage(STORAGE_KEYS.ZALO_SINGLE, singleVal);
       safeSetStorage(STORAGE_KEYS.ZALO_BATCH, batchVal);
 
-      // Nếu có kết nối Google Sheet thì tự động gửi ngầm lưu lên sheet
-      if (gasUrl) {
-        sendCloudPost({
-          action: 'saveSettings',
-          settings: {
-            fu_zalo_template_single: singleVal,
-            fu_zalo_template_batch: batchVal
-          }
-        });
-      }
-
       // Nếu đang mở popup zaloModal thì cập nhật lại nội dung ngay lập tức
       const modal = document.getElementById('zaloModal');
       if (modal && !modal.classList.contains('hidden')) {
@@ -4635,15 +4589,6 @@ Lưu ý: Anh em thợ kiểm tra kỹ danh sách và xác nhận giúp FU Studio
       document.getElementById('cfgZaloBatchTemplate').value = DEFAULT_ZALO_BATCH_TEMPLATE;
       localStorage.removeItem('fu_zalo_template_single');
       localStorage.removeItem('fu_zalo_template_batch');
-      if (gasUrl) {
-        sendCloudPost({
-          action: 'saveSettings',
-          settings: {
-            fu_zalo_template_single: DEFAULT_ZALO_SINGLE_TEMPLATE,
-            fu_zalo_template_batch: DEFAULT_ZALO_BATCH_TEMPLATE
-          }
-        });
-      }
       showToast('Đã khôi phục mẫu tin nhắn gốc thành công! ✅', 'info');
     }
 
